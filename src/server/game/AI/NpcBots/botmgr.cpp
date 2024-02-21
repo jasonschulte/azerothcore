@@ -1729,11 +1729,11 @@ std::string BotMgr::GetNpcBotCostStr(uint8 level, uint8 botclass)
         cost -= (silver * SILVER);
 
         if (gold != 0)
-            money << gold << " |TInterface\\Icons\\INV_Misc_Coin_01:8|t";
+            money << gold << " |TInterface\\Icons\\INV_Misc_Coin_01:20|t";
         if (silver != 0)
-            money << silver << " |TInterface\\Icons\\INV_Misc_Coin_03:8|t";
+            money << silver << " |TInterface\\Icons\\INV_Misc_Coin_03:20|t";
         if (cost)
-            money << cost << " |TInterface\\Icons\\INV_Misc_Coin_05:8|t";
+            money << cost << " |TInterface\\Icons\\INV_Misc_Coin_05:20|t";
     }
 
     return money.str();
