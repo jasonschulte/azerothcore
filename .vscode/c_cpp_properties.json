@@ -6,7 +6,9 @@
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/src/server/game/Scripting",
                 "${workspaceFolder}/src/server/game/AI/NpcBots",
-                "${workspaceFolder}/src/server/game"
+                "${workspaceFolder}/src/server/game",
+                "${workspaceFolder}/src/server/game/Achievements",
+                "${workspaceFolder}/src/server/game/AI/ScriptedAI"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",
