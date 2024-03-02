@@ -90,6 +90,7 @@ function start() {
   elif [ "${1}" = "world" ]; then
     docker run ${DOCKER_RUN_COMMON} \
       --ip "${ACORE_WORLD_HOST}" \
+      --cap-add SYS_NICE \
       jasonschulte/acore-world:latest
   fi
 }
