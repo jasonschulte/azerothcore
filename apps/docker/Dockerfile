@@ -1,142 +1,117 @@
-ARG UBUNTU_VERSION=22.04 # lts
-ARG TZ=Etc/UTC
+ARG UBUNTU_VERSION=20.04 # lts
 
-# This target lays out the general directory skeleton for AzerothCore,
-# This target isn't intended to be directly used
-FROM ubuntu:$UBUNTU_VERSION as skeleton
+FROM linuxserver/openssh-server as acore-ssh
 
-ARG DOCKER=1
-ARG DEBIAN_FRONTEND=noninteractive
+ARG MYSQL_USER
+ARG MYSQL_PASSWORD
+ARG MYSQL_HOST
+ARG MYSQL_PORT
 
-ENV TZ=$TZ
-ENV AC_FORCE_CREATE_DB=1
+ENV TZ=Etc/UTC
+ENV PUID=1000
+ENV PGID=1000
+ENV LISTEN_PORT=22
+ENV USER_NAME=acore
+ENV MYSQL_USER=acore
+ENV MYSQL_PASSWORD=acore
+ENV MYSQL_HOST=172.23.48.15
 
+RUN apk add rsync git mysql-client mariadb-connector-c-dev
+RUN echo -e "[client]\nuser=${MYSQL_USER}\npassword=${MYSQL_PASSWORD}\nhost=${MYSQL_PASSWORD}\nport=${MYSQL_PORT}" > /config/.my.cnf
 RUN mkdir -pv \
-        /azerothcore/bin                   \
-        /azerothcore/data                  \
-        /azerothcore/deps                  \
-        /azerothcore/env/dist/bin          \
-        /azerothcore/env/dist/data/Cameras \
-        /azerothcore/env/dist/data/dbc     \
-        /azerothcore/env/dist/data/maps    \
-        /azerothcore/env/dist/data/mmaps   \
-        /azerothcore/env/dist/data/vmaps   \
-        /azerothcore/env/dist/logs         \
-        /azerothcore/env/dist/temp         \
-        /azerothcore/env/dist/etc          \
-        /azerothcore/modules               \
-        /azerothcore/src                   \
-        /azerothcore/build
+        /custom-cont-init.d     \
+        /azerothcore/backups    \
+        /azerothcore/data       \
+        /azerothcore/source     \
+        /azerothcore/logs     \
+        /azerothcore/etc
+RUN echo -e "#!/bin/bash\nchown -R ${PUID}:${PGID} /azerothcore" > /custom-cont-init.d/volume-permissions.sh
+RUN chmod u+x /custom-cont-init.d/*
+RUN git clone https://github.com/jasonschulte/azerothcore-config.git /azerothcore/etc
 
-# Configure Timezone
-RUN apt-get update                                          \
-    && apt-get install -y tzdata ca-certificates            \
-    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime   \
-    && echo $TZ > /etc/timezone                         \
-    && dpkg-reconfigure --frontend noninteractive tzdata
+VOLUME /azerothcore/backups
+VOLUME /azerothcore/data
+VOLUME /azerothcore/source
+VOLUME /azerothcore/logs
+VOLUME /azerothcore/etc
 
 WORKDIR /azerothcore
 
-# This target builds the docker image
-# This target can be useful to inspect the explicit outputs from the build,
-FROM skeleton as build
+## Setup base ubuntu image for world and auth servers
 
-ARG CTOOLS_BUILD="all"
-ARG CTYPE="RelWithDebInfo"
-ARG CCACHE_CPP2="true"
-ARG CSCRIPTPCH="OFF"
-ARG CSCRIPTS="static"
-ARG CMODULES="static"
-ARG CSCRIPTS_DEFAULT_LINKAGE="static"
-ARG CWITH_WARNINGS="ON"
-ARG CMAKE_EXTRA_OPTIONS=""
-ARG GIT_DISCOVERY_ACROSS_FILESYSTEM=1
+FROM ubuntu:$UBUNTU_VERSION as acore-runtime
 
-ARG CCACHE_DIR="/ccache"
-ARG CCACHE_MAXSIZE="1000MB"
-ARG CCACHE_SLOPPINESS="pch_defines,time_macros,include_file_mtime"
-ARG CCACHE_COMPRESS=""
-ARG CCACHE_COMPRESSLEVEL="9"
-ARG CCACHE_COMPILERCHECK="content"
-ARG CCACHE_LOGFILE=""
+ARG DOCKER=1
+ARG DEBIAN_FRONTEND=noninteractive
+ARG MYSQL_USER
+ARG MYSQL_PASSWORD
+ARG MYSQL_HOST
+ARG MYSQL_PORT="3306"
+ARG ACORE_AUTH_DATABASE="acore_auth"
+ARG ACORE_WORLD_DATABASE="acore_world"
+ARG ACORE_CHARACTER_DATABASE="acore_characters"
 
-RUN apt-get update                                                     \
-    && apt-get install -y --no-install-recommends                         \
-        build-essential ccache libtool cmake-data make cmake clang    \
-        git lsb-base curl unzip default-mysql-client openssl                  \
-        default-libmysqlclient-dev libboost-all-dev libssl-dev libmysql++-dev \
-        libreadline-dev zlib1g-dev libbz2-dev libncurses5-dev         \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY CMakeLists.txt /azerothcore/CMakeLists.txt
-COPY conf /azerothcore/conf
-COPY deps /azerothcore/deps
-COPY src /azerothcore/src
-COPY modules /azerothcore/modules
-
-ARG CACHEBUST=1
-
-WORKDIR /azerothcore/build
-
-RUN --mount=type=cache,target=/ccache,sharing=locked \
-    # This may seem silly (and it is), but AzerothCore wants the git repo at
-    # build time. The git repo is _huge_ and it's not something that really
-    # makes sense to mount into the container, but this way we can let the build
-    # have the information it needs without including the hundreds of megabytes
-    # of git repo into the container.
-    --mount=type=bind,target=/azerothcore/.git,source=.git \
-    git config --global --add safe.directory /azerothcore \
-    && cmake /azerothcore \
-       -DCMAKE_INSTALL_PREFIX="/azerothcore/env/dist"  \
-       -DAPPS_BUILD="all"                              \
-       -DTOOLS_BUILD="$CTOOLS_BUILD"                   \
-       -DSCRIPTS="$CSCRIPTS"                           \
-       -DMODULES="$CMODULES"                           \
-       -DWITH_WARNINGS="$CWITH_WARNINGS"               \
-       -DCMAKE_BUILD_TYPE="$CTYPE"                     \
-       -DCMAKE_CXX_COMPILER="clang++"                  \
-       -DCMAKE_C_COMPILER="clang"                      \
-       -DCMAKE_CXX_COMPILER_LAUNCHER="ccache"          \
-       -DCMAKE_C_COMPILER_LAUNCHER="ccache"            \
-       -DBoost_USE_STATIC_LIBS="ON"                    \
-    && cmake --build . --config "$CTYPE" -j $(($(nproc) + 1)) \
-    && cmake --install . --config "$CTYPE"
-
-#############################
-# Base runtime for services #
-#############################
-
-FROM skeleton as runtime
-
-ARG USER_ID=1000
-ARG GROUP_ID=1000
-ARG DOCKER_USER=acore
-
+ENV TZ=Etc/UTC
+ENV USER_ID=1000
+ENV GROUP_ID=1000
+ENV USER_NAME=acore
 ENV ACORE_COMPONENT=undefined
+ENV AC_LOGIN_DATABASE_INFO="${MYSQL_HOST};${MYSQL_PORT};${MYSQL_USER};${MYSQL_PASSWORD};${ACORE_AUTH_DATABASE}"
+ENV AC_WORLD_DATABASE_INFO="${MYSQL_HOST};${MYSQL_PORT};${MYSQL_USER};${MYSQL_PASSWORD};${ACORE_WORLD_DATABASE}"
+ENV AC_CHARACTER_DATABASE_INFO="${MYSQL_HOST};${MYSQL_PORT};${MYSQL_USER};${MYSQL_PASSWORD};${ACORE_CHARACTER_DATABASE}"
+ENV AC_SOURCE_DIRECTORY="/azerothcore/source"
+
+# Configure Timezone
+# RUN apt-get update                                          \
+#     && apt-get install -y tzdata ca-certificates            \
+#     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime   \
+#     && echo $TZ > /etc/timezone                         \
+#     && dpkg-reconfigure --frontend noninteractive tzdata
 
 # Install base dependencies for azerothcore
-RUN apt-get update && \
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
+      tzdata ca-certificates \
       libmysqlclient21 libreadline8 \
+      libboost-system1.71.0 libboost-filesystem1.71.0 \
+      libboost-program-options1.71.0 libboost-iostreams1.71.0 \
+      libboost-regex1.71.0 \
       gettext-base default-mysql-client && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone && \
+    dpkg-reconfigure --frontend noninteractive tzdata && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /azerothcore/env/dist/etc/ /azerothcore/env/ref/etc
+RUN mkdir -pv \
+        /azerothcore/backups    \
+        /azerothcore/data       \
+        /azerothcore/source     \
+        /azerothcore/logs     \
+        /azerothcore/etc \
+        /azerothcore/tmp \
+        /azerothcore/bin
 
-VOLUME /azerothcore/env/dist/etc
+VOLUME /azerothcore/backups
+VOLUME /azerothcore/data
+VOLUME /azerothcore/source
+VOLUME /azerothcore/logs
+VOLUME /azerothcore/etc
 
-ENV PATH="/azerothcore/env/dist/bin:$PATH"
+ENV PATH="/azerothcore/bin:$PATH"
 
-RUN groupadd --gid "$GROUP_ID"  "$DOCKER_USER" && \
-    useradd -d /azerothcore --uid "$USER_ID"  --gid "$GROUP_ID"  "$DOCKER_USER" && \
-    passwd -d "$DOCKER_USER" && \
-    chown -R "$DOCKER_USER:$DOCKER_USER" /azerothcore
+RUN groupadd --gid "$GROUP_ID"  "$USER_NAME" && \
+    useradd -d /azerothcore --uid "$USER_ID"  --gid "$GROUP_ID"  "$USER_NAME" && \
+    chown -R "$USER_NAME:$USER_NAME" /azerothcore && \
+    passwd -d "$USER_NAME"
 
 COPY --chown=$USER_ID:$GROUP_ID \
      --chmod=755 \
-     apps/docker/entrypoint.sh /azerothcore/entrypoint.sh
+     entrypoint.sh /azerothcore/entrypoint.sh
 
-USER $DOCKER_USER
+WORKDIR /azerothcore/bin
+
+USER $USER_NAME
 
 ENTRYPOINT ["/usr/bin/env", "bash", "/azerothcore/entrypoint.sh"]
 
@@ -144,113 +119,37 @@ ENTRYPOINT ["/usr/bin/env", "bash", "/azerothcore/entrypoint.sh"]
 # Auth Server #
 ###############
 
-FROM runtime as authserver
+FROM acore-runtime as acore-auth
 LABEL description "AzerothCore Auth Server"
 
 ENV ACORE_COMPONENT=authserver
 # Don't run database migrations. We can leave that up to the db-import container
-ENV AC_UPDATES_ENABLE_DATABASES=0
+#ENV AC_UPDATES_ENABLE_DATABASES=0
 # This disables user prompts. The console is still active, however
 ENV AC_DISABLE_INTERACTIVE=1
-ENV AC_CLOSE_IDLE_CONNECTIONS=0
+#ENV AC_CLOSE_IDLE_CONNECTIONS=0
 
-COPY --chown=$DOCKER_USER:$DOCKER_USER \
-     --from=build \
-     /azerothcore/env/dist/bin/authserver /azerothcore/env/dist/bin/authserver
-
+COPY --chown=$USER_NAME:$USER_NAME \
+    bin/authserver /azerothcore/bin/authserver
 
 CMD ["authserver"]
 
-################
+###############
 # World Server #
-################
+###############
 
-FROM runtime as worldserver
-
+FROM acore-runtime as acore-world
 LABEL description "AzerothCore World Server"
 
 ENV ACORE_COMPONENT=worldserver
 # Don't run database migrations. We can leave that up to the db-import container
-ENV AC_UPDATES_ENABLE_DATABASES=0
+#ENV AC_UPDATES_ENABLE_DATABASES=0
 # This disables user prompts. The console is still active, however
 ENV AC_DISABLE_INTERACTIVE=1
-ENV AC_CLOSE_IDLE_CONNECTIONS=0
+#ENV AC_CLOSE_IDLE_CONNECTIONS=0
 
-COPY --chown=$DOCKER_USER:$DOCKER_USER \
-     --from=build \
-     /azerothcore/env/dist/bin/worldserver /azerothcore/env/dist/bin/worldserver
+COPY --chown=$USER_NAME:$USER_NAME \
+    bin/worldserver /azerothcore/bin/worldserver
 
-VOLUME /azerothcore/env/dist/etc
-
+# CMD ["tail", "-f", "/dev/null"]
 CMD ["worldserver"]
-
-#############
-# DB Import #
-#############
-
-FROM runtime as db-import
-
-LABEL description "AzerothCore Database Import tool"
-
-USER $DOCKER_USER
-
-ENV ACORE_COMPONENT=dbimport
-
-COPY --chown=$DOCKER_USER:$DOCKER_USER \
-    data data
-
-COPY --chown=$DOCKER_USER:$DOCKER_USER\
-     --from=build \
-     /azerothcore/env/dist/bin/dbimport /azerothcore/env/dist/bin/dbimport
-
-CMD /azerothcore/env/dist/bin/dbimport
-
-###############
-# Client Data #
-###############
-
-FROM skeleton as client-data
-
-LABEL description="AzerothCore client-data"
-
-ENV DATAPATH=/azerothcore/env/dist/data
-
-RUN apt-get update && \
-    apt-get install -y curl unzip && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY --chown=$DOCKER_USER:$DOCKER_USER apps apps
-
-VOLUME /azerothcore/env/dist/data
-
-USER $DOCKER_USER
-
-CMD bash -c "source /azerothcore/apps/installer/includes/functions.sh && inst_download_client_data"
-
-##################
-# Map Extractors #
-##################
-
-FROM runtime as tools
-
-LABEL description "AzerothCore Tools"
-
-WORKDIR /azerothcore/env/dist/
-
-RUN mkdir -pv /azerothcore/env/dist/Cameras \
-              /azerothcore/env/dist/dbc     \
-              /azerothcore/env/dist/maps    \
-              /azerothcore/env/dist/mmaps   \
-              /azerothcore/env/dist/vmaps
-
-COPY --chown=$DOCKER_USER:$DOCKER_USER --from=build \
-  /azerothcore/env/dist/bin/map_extractor /azerothcore/env/dist/bin/map_extractor
-
-COPY --chown=$DOCKER_USER:$DOCKER_USER --from=build \
-  /azerothcore/env/dist/bin/mmaps_generator /azerothcore/env/dist/bin/mmaps_generator
-
-COPY --chown=$DOCKER_USER:$DOCKER_USER --from=build \
-  /azerothcore/env/dist/bin/vmap4_assembler /azerothcore/env/dist/bin/vmap4_assembler
-
-COPY --chown=$DOCKER_USER:$DOCKER_USER --from=build \
-  /azerothcore/env/dist/bin/vmap4_extractor /azerothcore/env/dist/bin/vmap4_extractor
