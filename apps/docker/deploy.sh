@@ -52,7 +52,7 @@ function check_symlink () {
 function backup () {
   DATETIME=$(date +"%F-%T")
   if [ "${1}" = "config" ] || [ "${1}" = "all" ]; then
-    ssh $SSH_USER@$SSH_HOST "tar -cvzf /azerothcore/backups/config-${DATETIME}.tgz -C /azerothcore/etc/ ."
+    ssh $SSH_USER@$SSH_HOST "tar -cvzf /azerothcore/backups/config-${DATETIME}.tgz --exclude=.git -C /azerothcore/etc/ ."
   fi
   if [ "${1}" = "database" ] || [ "${1}" = "all" ]; then
     ssh $SSH_USER@$SSH_HOST "mysqldump ${ACORE_AUTH_DATABASE} | gzip > /azerothcore/backups/${ACORE_AUTH_DATABASE}-${DATETIME}.sql.gz"
@@ -183,12 +183,12 @@ while [[ $# -gt 0 ]]; do
   CURRENT_ARG=$1
   case "$1" in
     update)
-      $0 "build:acore"&
-      backup "all" &
-      $0 "sync:all" &      
-      stop "acore"&
-      remove "acore"&
-      wait      
+      $0 "build:acore"
+      backup "all" 
+      $0 "sync:all" 
+      stop "acore"     
+      # wait
+      remove "acore"      
       start "auth"
       start "world"
       shift
