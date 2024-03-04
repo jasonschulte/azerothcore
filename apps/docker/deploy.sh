@@ -86,10 +86,12 @@ function start() {
   elif [ "${1}" = "auth" ]; then
     docker run ${DOCKER_RUN_COMMON} \
       --ip "${ACORE_AUTH_HOST}" \
+      --dns "1.1.1.1" --dns "1.0.0.1" \
       jasonschulte/acore-auth:latest
   elif [ "${1}" = "world" ]; then
     docker run ${DOCKER_RUN_COMMON} \
       --ip "${ACORE_WORLD_HOST}" \
+      --dns "1.1.1.1" --dns "1.0.0.1" \
       --cap-add SYS_NICE \
       jasonschulte/acore-world:latest
   fi
