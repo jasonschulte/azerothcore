@@ -185,6 +185,7 @@ while [[ $# -gt 0 ]]; do
   CURRENT_ARG=$1
   case "$1" in
     update)
+      set -x
       $0 "build:acore"
       backup "all" 
       $0 "sync:all" 
@@ -193,7 +194,8 @@ while [[ $# -gt 0 ]]; do
       remove "acore"      
       start "auth"
       start "world"
-      shift
+      set +x
+      shift      
       ;;
 
     clean)
