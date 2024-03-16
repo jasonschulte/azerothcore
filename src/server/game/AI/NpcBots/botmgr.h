@@ -60,6 +60,12 @@ enum BotRemoveType
     BOT_REMOVE_BY_DEFAULT               = BOT_REMOVE_LOGOUT
 };
 
+enum BotOwnershipExpireMode
+{
+    BOT_OWNERSHIP_EXPIRE_OFFLINE        = 0,
+    BOT_OWNERSHIP_EXPIRE_HIRE           = 1
+};
+
 enum BotAttackRange
 {
     BOT_ATTACK_RANGE_SHORT              = 1,
@@ -111,6 +117,7 @@ class AC_GAME_API BotMgr
         static bool FilterRaces();
         static bool IsBotGenerationEnabledBGs();
         static bool IsBotLevelCappedByConfigBG();
+        static bool IsBotLevelCappedByConfigBGFirstPlayer();
         static bool IsBotGenerationEnabledWorldMapId(uint32 mapId);
         static bool IsBotHKEnabled();
         static bool IsBotHKMessageEnabled();
@@ -124,6 +131,7 @@ class AC_GAME_API BotMgr
         static uint8 GetNoDPSTargetIconFlags();
         static uint32 GetBaseUpdateDelay();
         static uint32 GetOwnershipExpireTime();
+        static uint8 GetOwnershipExpireMode();
         static uint32 GetDesiredWanderingBotsCount();
         static uint32 GetBGTargetTeamPlayersCount(BattlegroundTypeId bgTypeId);
         static float GetBotHKHonorRate();
@@ -139,6 +147,7 @@ class AC_GAME_API BotMgr
         static float GetBotWandererHealingMod();
         static float GetBotWandererHPMod();
         static float GetBotWandererSpeedMod();
+        static float GetBotWandererXPGainMod();
         static BotBrackets GetBotWandererLevelBrackets();
         static float GetBotDamageModByClass(uint8 botclass);
         static float GetBotDamageModByLevel(uint8 botlevel);
@@ -151,6 +160,7 @@ class AC_GAME_API BotMgr
         //onEvent hooks
         static void OnBotWandererKilled(Creature const* bot, Player* looter);
         static void OnBotWandererKilled(GameObject* go);
+        static void OnBotKilled(Creature const* bot, Unit* attacker = nullptr);
         static void OnBotSpellInterrupt(Unit const* caster, CurrentSpellTypes spellType);
         static void OnBotSpellGo(Unit const* caster, Spell const* spell, bool ok = true);
         static void OnBotOwnerSpellGo(Unit const* caster, Spell const* spell, bool ok = true);
