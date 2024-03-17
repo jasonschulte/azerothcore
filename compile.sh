@@ -13,6 +13,8 @@ cmake ../ \
   -DCMAKE_C_COMPILER="/usr/bin/clang"     \
   -DCMAKE_CXX_COMPILER_LAUNCHER="ccache"  \
   -DCMAKE_C_COMPILER_LAUNCHER="ccache"    \
+  # -DNOPCH=1
 
 #cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/azeroth-server/ -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DWITH_WARNINGS=1 -DTOOLS_BUILD=all -DSCRIPTS=static -DMODULES=static
 make -j 32
+make install
